@@ -46,6 +46,25 @@ jobs:
         id: module
         run: echo "name=${GITHUB_REF_NAME#test-coverage/}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve module path for coverage filter
+        id: module_path
+        run: |
+          name="${{ steps.module.outputs.name }}"
+          # Search upload/system/ first (engine + library), then fall back to all of upload/
+          path=$(find upload/system -name "${name}.php" -not -path '*/vendor/*' 2>/dev/null | head -1)
+          if [ -z "$path" ]; then
+            path=$(find upload/system -type d -name "$name" -not -path '*/vendor/*' 2>/dev/null | head -1)
+          fi
+          if [ -z "$path" ]; then
+            path=$(find upload -name "${name}.php" -not -path '*/vendor/*' | head -1)
+          fi
+          if [ -z "$path" ]; then
+            echo "::error::Could not find module '${name}' under upload/"
+            exit 1
+          fi
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
+          echo "Resolved module path: ${path}"
+
       - name: Install dependencies (baseline)
         working-directory: _baseline
         run: composer install --no-interaction --prefer-dist 2>/dev/null || true
@@ -62,7 +81,7 @@ jobs:
       - name: Parse baseline coverage
         id: before
         run: |
-          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml "${{ steps.module_path.outputs.path }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +94,7 @@ jobs:
       - name: Parse new coverage
         id: after
         run: |
-          pct=$(php tools/coverage/measure.php coverage/new.xml \
+          pct=$(php tools/coverage/measure.php coverage/new.xml "${{ steps.module_path.outputs.path }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
