@@ -25,7 +25,7 @@ if (!$xml) {
     exit(1);
 }
 
-$metrics = $xml->xpath('//metrics');
+$metrics = $xml->xpath('//project/metrics');
 
 $totalStatements = 0;
 $coveredStatements = 0;
