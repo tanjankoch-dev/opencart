@@ -46,6 +46,32 @@ jobs:
         id: module
         run: echo "name=${GITHUB_REF_NAME#test-coverage/}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve module source path
+        id: source
+        run: |
+          MODULE="${{ steps.module.outputs.name }}"
+          case "$MODULE" in
+            config)   FILE="upload/system/engine/config.php" ;;
+            registry) FILE="upload/system/engine/registry.php" ;;
+            event)    FILE="upload/system/engine/event.php" ;;
+            action)   FILE="upload/system/engine/action.php" ;;
+            currency) FILE="upload/system/library/cart/currency.php" ;;
+            customer) FILE="upload/system/library/cart/customer.php" ;;
+            tax)      FILE="upload/system/library/cart/tax.php" ;;
+            weight)   FILE="upload/system/library/cart/weight.php" ;;
+            cart)     FILE="upload/system/library/cart/cart.php" ;;
+            language) FILE="upload/system/library/language.php" ;;
+            request)  FILE="upload/system/library/request.php" ;;
+            response) FILE="upload/system/library/response.php" ;;
+            *)        FILE="" ;;
+          esac
+          echo "file=${FILE}" >> "$GITHUB_OUTPUT"
+          if [ -n "$FILE" ]; then
+            echo "filter=--coverage-filter ${FILE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "filter=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies (baseline)
         working-directory: _baseline
         run: composer install --no-interaction --prefer-dist 2>/dev/null || true
@@ -55,6 +81,7 @@ jobs:
         run: |
           mkdir -p ../coverage
           upload/system/storage/vendor/bin/phpunit \
+            ${{ steps.source.outputs.filter }} \
             --coverage-clover ../coverage/baseline.xml \
             --no-progress 2>/dev/null || true
         continue-on-error: true
@@ -69,6 +96,7 @@ jobs:
       - name: Run PHPUnit (feature branch)
         run: |
           upload/system/storage/vendor/bin/phpunit \
+            ${{ steps.source.outputs.filter }} \
             --coverage-clover coverage/new.xml \
             --no-progress
 
