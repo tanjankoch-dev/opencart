@@ -8,8 +8,25 @@ if (!file_exists($file)) {
     exit(0);
 }
 
-$xml     = simplexml_load_file($file);
-$metrics = $xml->xpath('//metrics');
+$filter = $argv[2] ?? null;
+
+$xml = simplexml_load_file($file);
+
+if ($filter !== null) {
+    $filter = rtrim($filter, '/');
+    $metrics = [];
+    foreach ($xml->xpath('//file') as $fileNode) {
+        $name = (string) $fileNode['name'];
+        if (str_contains($name, '/' . $filter) || str_ends_with($name, '/' . basename($filter))) {
+            foreach ($fileNode->xpath('class/metrics') as $m) {
+                $metrics[] = $m;
+            }
+        }
+    }
+} else {
+    $metrics = $xml->xpath('//metrics');
+}
+
 $covered = (int) array_sum(array_map(fn($m) => (int) $m['coveredstatements'], $metrics));
 $total   = (int) array_sum(array_map(fn($m) => (int) $m['statements'], $metrics));
 $pct     = $total > 0 ? round($covered / $total * 100, 1) : 0.0;
