@@ -1,0 +1,128 @@
+name: Coverage PR
+
+on:
+  push:
+    branches:
+      - 'test-coverage/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-coverage-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout master (baseline)
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: _baseline
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: pcov
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: upload/system/storage/vendor
+          key: 8.2-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: 8.2-composer-
+
+      - name: Install dependencies (feature branch)
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Extract module name
+        id: module
+        run: echo "name=${GITHUB_REF_NAME#test-coverage/}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies (baseline)
+        working-directory: _baseline
+        run: composer install --no-interaction --prefer-dist 2>/dev/null || true
+
+      - name: Measure baseline coverage
+        working-directory: _baseline
+        run: |
+          mkdir -p ../coverage
+          upload/system/storage/vendor/bin/phpunit \
+            --coverage-clover ../coverage/baseline.xml \
+            --no-progress 2>/dev/null || true
+        continue-on-error: true
+
+      - name: Parse baseline coverage
+        id: before
+        run: |
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+                | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
+          echo "pct=${pct}" >> "$GITHUB_OUTPUT"
+
+      - name: Run PHPUnit (feature branch)
+        run: |
+          upload/system/storage/vendor/bin/phpunit \
+            --coverage-clover coverage/new.xml \
+            --no-progress
+
+      - name: Parse new coverage
+        id: after
+        run: |
+          pct=$(php tools/coverage/measure.php coverage/new.xml \
+                | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
+          echo "pct=${pct}" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce 85% line coverage threshold
+        run: |
+          php -r "
+            \$pct = (float) '${{ steps.after.outputs.pct }}';
+            if (\$pct < 85.0) {
+              fwrite(STDERR, \"Coverage {\$pct}% is below the 85% threshold.\n\");
+              exit(1);
+            }
+            echo \"Coverage {\$pct}% meets the 85% threshold.\n\";
+          "
+
+      - name: Detect application code changes
+        id: app_changes
+        run: |
+          git diff --name-only origin/master...HEAD -- 'upload/' \
+            > /tmp/app_changes_files.txt
+          if [ -s /tmp/app_changes_files.txt ]; then
+            echo "has_changes=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate PR body
+        run: |
+          php tools/coverage/generate-pr-body.php \
+            "${{ steps.module.outputs.name }}" \
+            "${{ steps.before.outputs.pct }}" \
+            "${{ steps.after.outputs.pct }}" \
+            /tmp/app_changes_files.txt \
+            > /tmp/pr_body.md
+
+      - name: Open or update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          TITLE="test: coverage for ${{ steps.module.outputs.name }}"
+          if gh pr view "$BRANCH" --json number -q .number > /dev/null 2>&1; then
+            echo "PR already exists — updating body."
+            gh pr edit "$BRANCH" --body-file /tmp/pr_body.md
+          else
+            gh pr create \
+              --base master \
+              --head "$BRANCH" \
+              --title "$TITLE" \
+              --body-file /tmp/pr_body.md
+          fi

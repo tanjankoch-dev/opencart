@@ -1,10 +1,8 @@
 <?php
 declare(strict_types=1);
 
-// Composer autoloader (PHPUnit + vendor libs)
 require_once __DIR__ . '/../upload/system/storage/vendor/autoload.php';
 
-// Directory constants
 define('DIR_OPENCART',    realpath(__DIR__ . '/../upload') . '/');
 define('DIR_SYSTEM',      DIR_OPENCART . 'system/');
 define('DIR_APPLICATION', DIR_OPENCART . 'catalog/');
@@ -23,7 +21,6 @@ define('HTTP_SERVER',     'http://localhost/');
 define('HTTPS_SERVER',    'http://localhost/');
 define('DB_PREFIX',       'oc_');
 
-// Register OpenCart's custom autoloader
 require_once DIR_SYSTEM . 'engine/autoloader.php';
 
 $autoloader = new \Opencart\System\Engine\Autoloader();
