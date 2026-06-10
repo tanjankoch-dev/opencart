@@ -10,10 +10,17 @@
         </testsuite>
     </testsuites>
 
+    <coverage>
+        <report>
+            <clover outputFile="coverage/clover.xml"/>
+            <html outputDirectory="coverage/html"/>
+        </report>
+    </coverage>
+
     <source>
         <include>
-            <directory>upload/system/library</directory>
             <directory>upload/system/engine</directory>
+            <directory>upload/system/library</directory>
         </include>
     </source>
 </phpunit>
