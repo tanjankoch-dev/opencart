@@ -17,39 +17,14 @@ if (!defined('CACHE_PREFIX')) {
     define('CACHE_PREFIX', 'test');
 }
 
-// Provide a stub \Redis class if the extension is not loaded
-if (!class_exists(\Redis::class, false)) {
-    class_alias(FakeRedis::class, 'Redis');
-}
-
-/**
- * Minimal Redis stub for testing when the extension is unavailable.
- */
-class FakeRedis
-{
-    private array $store = [];
-
-    public function pconnect(string $host, int $port): bool
-    {
-        return true;
-    }
-
-    public function get(string $key): string|false
-    {
-        return $this->store[$key] ?? false;
-    }
-
-    public function set(string $key, string $value, int $ttl = 0): bool
-    {
-        $this->store[$key] = $value;
-        return true;
-    }
-
-    public function unlink(string $key): int
-    {
-        unset($this->store[$key]);
-        return 1;
-    }
+// Provide a stub \Redis class if the extension is not loaded.
+if (!extension_loaded('redis')) {
+    eval('class Redis {
+        public function pconnect($host, $port) { return true; }
+        public function get($key) { return false; }
+        public function set($key, $value, $options = null) { return true; }
+        public function unlink($key, ...$otherKeys) { return 1; }
+    }');
 }
 
 class RedisAdaptorTest extends TestCase
@@ -73,7 +48,50 @@ class RedisAdaptorTest extends TestCase
 
     private function createAdaptor(): \Opencart\System\Library\Session\Redis
     {
-        return new \Opencart\System\Library\Session\Redis($this->registry);
+        $adaptor = new \Opencart\System\Library\Session\Redis($this->registry);
+
+        // The constructor may fail to connect (no Redis server in test/CI),
+        // leaving $redis and $prefix uninitialized. Use reflection to set them.
+        $ref = new \ReflectionClass($adaptor);
+
+        // Build a mock that extends whatever \Redis class is available
+        $store = new \ArrayObject();
+
+        if (extension_loaded('redis')) {
+            // Real Redis extension loaded — create a mock via PHPUnit
+            $mockRedis = $this->createMock(\Redis::class);
+            $mockRedis->method('get')->willReturnCallback(function ($key) use ($store) {
+                return $store[$key] ?? false;
+            });
+            $mockRedis->method('set')->willReturnCallback(function ($key, $value) use ($store) {
+                $store[$key] = $value;
+                return true;
+            });
+            $mockRedis->method('unlink')->willReturnCallback(function ($key) use ($store) {
+                unset($store[$key]);
+                return 1;
+            });
+        } else {
+            // No extension — use our eval'd stub which can be extended
+            $mockRedis = new class($store) extends \Redis {
+                private \ArrayObject $store;
+                public function __construct(\ArrayObject $store) { $this->store = $store; }
+                public function pconnect($host, $port) { return true; }
+                public function get($key) { return $this->store[$key] ?? false; }
+                public function set($key, $value, $options = null) { $this->store[$key] = $value; return true; }
+                public function unlink($key, ...$otherKeys) { unset($this->store[$key]); return 1; }
+            };
+        }
+
+        $redisProp = $ref->getProperty('redis');
+        $redisProp->setAccessible(true);
+        $redisProp->setValue($adaptor, $mockRedis);
+
+        $prefixProp = $ref->getProperty('prefix');
+        $prefixProp->setAccessible(true);
+        $prefixProp->setValue($adaptor, CACHE_PREFIX . '.session.');
+
+        return $adaptor;
     }
 
     public function testReadReturnsEmptyArrayWhenKeyMissing(): void
@@ -85,7 +103,6 @@ class RedisAdaptorTest extends TestCase
     public function testReadReturnsDecodedData(): void
     {
         $adaptor = $this->createAdaptor();
-        // Write data first, then read it back
         $adaptor->write('existing_session_abc123', ['user' => 'test', 'cart' => [1]]);
         $result = $adaptor->read('existing_session_abc123');
 
