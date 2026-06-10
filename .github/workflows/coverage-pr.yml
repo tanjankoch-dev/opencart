@@ -62,7 +62,7 @@ jobs:
       - name: Parse baseline coverage
         id: before
         run: |
-          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml "library/${{ steps.module.outputs.name }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +75,7 @@ jobs:
       - name: Parse new coverage
         id: after
         run: |
-          pct=$(php tools/coverage/measure.php coverage/new.xml \
+          pct=$(php tools/coverage/measure.php coverage/new.xml "library/${{ steps.module.outputs.name }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
