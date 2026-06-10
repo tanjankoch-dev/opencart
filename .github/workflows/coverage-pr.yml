@@ -66,11 +66,6 @@ jobs:
             *)        FILE="" ;;
           esac
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
-          if [ -n "$FILE" ]; then
-            echo "filter=--coverage-filter ${FILE}" >> "$GITHUB_OUTPUT"
-          else
-            echo "filter=" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Install dependencies (baseline)
         working-directory: _baseline
@@ -81,7 +76,6 @@ jobs:
         run: |
           mkdir -p ../coverage
           upload/system/storage/vendor/bin/phpunit \
-            ${{ steps.source.outputs.filter }} \
             --coverage-clover ../coverage/baseline.xml \
             --no-progress 2>/dev/null || true
         continue-on-error: true
@@ -89,21 +83,20 @@ jobs:
       - name: Parse baseline coverage
         id: before
         run: |
-          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml "${{ steps.source.outputs.file }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
       - name: Run PHPUnit (feature branch)
         run: |
           upload/system/storage/vendor/bin/phpunit \
-            ${{ steps.source.outputs.filter }} \
             --coverage-clover coverage/new.xml \
             --no-progress
 
       - name: Parse new coverage
         id: after
         run: |
-          pct=$(php tools/coverage/measure.php coverage/new.xml \
+          pct=$(php tools/coverage/measure.php coverage/new.xml "${{ steps.source.outputs.file }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
