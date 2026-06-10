@@ -46,6 +46,16 @@ jobs:
         id: module
         run: echo "name=${GITHUB_REF_NAME#test-coverage/}" >> "$GITHUB_OUTPUT"
 
+      - name: Detect module source path
+        id: modpath
+        run: |
+          MOD="${{ steps.module.outputs.name }}"
+          path=$(find upload -name "${MOD}.php" ! -path '*/vendor/*' | head -1)
+          if [ -z "$path" ]; then
+            path="upload/system/library/cart/${MOD}.php"
+          fi
+          echo "filter=${path}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies (baseline)
         working-directory: _baseline
         run: composer install --no-interaction --prefer-dist 2>/dev/null || true
@@ -62,7 +72,7 @@ jobs:
       - name: Parse baseline coverage
         id: before
         run: |
-          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml "${{ steps.modpath.outputs.filter }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +85,7 @@ jobs:
       - name: Parse new coverage
         id: after
         run: |
-          pct=$(php tools/coverage/measure.php coverage/new.xml \
+          pct=$(php tools/coverage/measure.php coverage/new.xml "${{ steps.modpath.outputs.filter }}" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
