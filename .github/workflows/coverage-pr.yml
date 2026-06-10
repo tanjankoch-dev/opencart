@@ -46,6 +46,20 @@ jobs:
         id: module
         run: echo "name=${GITHUB_REF_NAME#test-coverage/}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve module file path
+        id: modpath
+        run: |
+          MOD="${{ steps.module.outputs.name }}"
+          # Search engine and library dirs for a matching .php file
+          MATCH=$(find upload/system/engine upload/system/library \
+            -type f -name "${MOD##*/}.php" 2>/dev/null \
+            | grep -m1 "${MOD}\.php" || true)
+          if [ -z "$MATCH" ]; then
+            echo "No source file found for module '$MOD' — falling back to full source" >&2
+            MATCH=""
+          fi
+          echo "filter=$MATCH" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies (baseline)
         working-directory: _baseline
         run: composer install --no-interaction --prefer-dist 2>/dev/null || true
@@ -62,7 +76,8 @@ jobs:
       - name: Parse baseline coverage
         id: before
         run: |
-          pct=$(php tools/coverage/measure.php coverage/baseline.xml \
+          FILTER="${{ steps.modpath.outputs.filter }}"
+          pct=$(php tools/coverage/measure.php coverage/baseline.xml "$FILTER" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +90,8 @@ jobs:
       - name: Parse new coverage
         id: after
         run: |
-          pct=$(php tools/coverage/measure.php coverage/new.xml \
+          FILTER="${{ steps.modpath.outputs.filter }}"
+          pct=$(php tools/coverage/measure.php coverage/new.xml "$FILTER" \
                 | php -r "echo json_decode(stream_get_contents(STDIN))->percentage;")
           echo "pct=${pct}" >> "$GITHUB_OUTPUT"
 
