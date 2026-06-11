@@ -63,7 +63,10 @@ jobs:
             language) FILE="upload/system/library/language.php" ;;
             request)  FILE="upload/system/library/request.php" ;;
             response) FILE="upload/system/library/response.php" ;;
-            *)        FILE="" ;;
+            *)
+              echo "::error::Unknown module '${MODULE}' — add it to the case statement in coverage-pr.yml"
+              exit 1
+              ;;
           esac
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
 
