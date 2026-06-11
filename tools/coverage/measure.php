@@ -23,7 +23,7 @@ if ($fileFilter !== '') {
         }
     }
 } else {
-    $metrics = $xml->xpath('//metrics');
+    $metrics = $xml->xpath('//file/metrics');
 }
 
 $covered = (int) array_sum(array_map(fn($m) => (int) $m['coveredstatements'], $metrics));
